@@ -5,33 +5,40 @@
 --   2. Downloads the script chosen in setup.lua as /startup.lua,
 --      replacing any existing startup.lua.
 --   3. Runs the new startup.lua.
+--
+-- Scripts call this at the top with --check (see README). In that mode
+-- step 3 is skipped: if startup.lua changed the computer reboots into the
+-- new version, otherwise control returns to the calling script.
 
 local CONFIG_PATH = "/.hub/config"
 local UPDATE_PATH = "/update.lua"
 local SETUP_PATH = "/setup.lua"
 local STARTUP_PATH = "/startup.lua"
 
--- update.lua passes this to the fresh copy of itself after a self-update,
--- so the new copy doesn't try to update itself again.
-local args = { ... }
-local justUpdated = args[1] == "--updated"
+-- --updated: passed to the fresh copy of itself after a self-update, so
+--            the new copy doesn't try to update itself again.
+-- --check:   called from a script; don't launch startup.lua (see above).
+local flags = {}
+for _, arg in ipairs({ ... }) do flags[arg] = true end
+local justUpdated = flags["--updated"]
+local checkOnly = flags["--check"]
 
 local function readFile(path)
   if not fs.exists(path) then return nil end
-  local f = fs.open(path, "r")
+  local f = fs.open(path, "rb")
   local data = f.readAll()
   f.close()
   return data
 end
 
 local function writeFile(path, data)
-  local f = fs.open(path, "w")
+  local f = fs.open(path, "wb")
   f.write(data)
   f.close()
 end
 
 local function fetch(url)
-  local res, err = http.get(url, { ["User-Agent"] = "cc-script-hub" })
+  local res, err = http.get(url, { ["User-Agent"] = "cc-script-hub" }, true)
   if not res then return nil, err end
   local body = res.readAll()
   res.close()
@@ -64,7 +71,7 @@ if not justUpdated then
   local changed, err = sync("update.lua", UPDATE_PATH)
   if changed then
     print("update.lua changed, restarting...")
-    shell.run(UPDATE_PATH, "--updated")
+    shell.run(UPDATE_PATH, "--updated", checkOnly and "--check" or nil)
     return
   elseif changed == nil then
     print("Couldn't check update.lua: " .. tostring(err))
@@ -91,5 +98,11 @@ else
   error("Could not download " .. config.file .. ": " .. tostring(err), 0)
 end
 
--- 3. Launch it.
-shell.run(STARTUP_PATH)
+-- 3. Launch it. A calling script just carries on unless it was replaced.
+if not checkOnly then
+  shell.run(STARTUP_PATH)
+elseif changed then
+  print("Rebooting into new version...")
+  sleep(1)
+  os.reboot()
+end

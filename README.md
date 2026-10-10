@@ -32,6 +32,15 @@ The HTTP API must be enabled in the ComputerCraft server config.
 
 Drop `myscript.lua` into `scripts/` and push to `main`. It'll appear in the menu on the next setup.
 
+Every script should start with this line so it updates itself each time it boots:
+
+```lua
+if fs.exists("/update.lua") then shell.run("/update.lua", "--check") end
+```
+
+With `--check`, `update.lua` syncs everything as usual but doesn't launch `startup.lua`. If the
+script itself changed it reboots into the new version; otherwise the script just carries on.
+
 ## Notes
 
 - Run `update` on a computer at any time to pull the latest scripts.
